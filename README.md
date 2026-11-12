@@ -12,15 +12,17 @@ Agent Skill repository (standalone Git repo). Suggested remote name: `twitter-co
 
 ## What this skill allows
 
-- Create **your own** watchlist group
-- Edit **only that** group’s account list
-- Fetch collected tweets for your group
+- Read the **operator-assigned** watchlist group (`TWITTER_COLLECTOR_AGENT_GROUP_ID`)
+- Fetch collected tweets for that group
 - Keep category taxonomies in the **agent’s local workspace**
 
 Collection is **periodic** (not live). Engagement metrics are snapshots and go stale — see `SKILL.md`.
 
+API keys on the current deployment are **read-oriented**. Creating groups and editing members is done by the operator in the console, not by the agent via this skill.
+
 ## Out of scope
 
+- Creating/editing watchlist groups or members via API
 - Other groups
 - Workflows, reports, graphs, feeds
 - Collect jobs / task execution / admin APIs
@@ -31,8 +33,8 @@ Collection is **periodic** (not live). Engagement metrics are snapshots and go s
 |----------|----------|-------------|
 | `TWITTER_COLLECTOR_URL` | Yes | API base URL, **no trailing slash** |
 | `TWITTER_COLLECTOR_API_KEY` | Yes | API key (`tc_…`) |
+| `TWITTER_COLLECTOR_AGENT_GROUP_ID` | Yes | Group id created manually for this agent |
 | `TWITTER_COLLECTOR_PROTECTED_GROUP_IDS` | No | Extra group IDs that must never be modified |
-| `TWITTER_COLLECTOR_AGENT_GROUP_ID` | No | Your agent-owned group id after create |
 
 Copy `.env.example` as a template. Never commit real URLs or keys.
 

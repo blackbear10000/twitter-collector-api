@@ -1,18 +1,23 @@
 ---
 name: twitter-collector-api
 description: >-
-  Uses the Twitter Collector HTTP API so an agent can create its own watchlist
-  group, maintain that group's account list, and fetch collected tweets. Use when
-  monitoring Twitter/X accounts or reading collected posts via
-  TWITTER_COLLECTOR_URL and TWITTER_COLLECTOR_API_KEY. Does not run workflows,
-  generate reports, or modify other groups.
+  Uses the Twitter Collector HTTP API so an agent can read its assigned
+  watchlist group and fetch collected tweets. Use when monitoring Twitter/X
+  accounts or reading collected posts via TWITTER_COLLECTOR_URL and
+  TWITTER_COLLECTOR_API_KEY. Does not create groups, edit other groups, run
+  workflows, generate reports, or execute jobs.
 ---
 
 # Twitter Collector API
 
-Caller-facing skill for a **narrow** slice of the Twitter Collector HTTP API:
-create **your own** watchlist group, edit **only that** group's membership, and
-fetch tweets. Base URL and credentials come **only** from the caller environment.
+Caller-facing skill for a **narrow, mostly read-only** slice of the Twitter
+Collector HTTP API. Base URL and credentials come **only** from the caller
+environment.
+
+**Current deployment constraint:** API keys are accepted on **read** routes.
+Watchlist **writes** (create group, add/remove members, create targets) require
+a user JWT and are **out of band** for this skill. The operator creates the
+agent’s group in the console and passes the id via env.
 
 ## Environment
 
@@ -20,10 +25,10 @@ fetch tweets. Base URL and credentials come **only** from the caller environment
 |----------|----------|---------|
 | `TWITTER_COLLECTOR_URL` | Yes | API base URL, no trailing slash (placeholder shape only: `https://example.com`) |
 | `TWITTER_COLLECTOR_API_KEY` | Yes | API key (`tc_…`) |
+| `TWITTER_COLLECTOR_AGENT_GROUP_ID` | Yes | Operator-created group id reserved for this agent |
 | `TWITTER_COLLECTOR_PROTECTED_GROUP_IDS` | No | Extra group IDs that must never be modified |
-| `TWITTER_COLLECTOR_AGENT_GROUP_ID` | No | Your agent-owned group id once created (prefer persisting this locally) |
 
-If a required variable is missing, stop and ask the operator to set it. Do not invent a URL.
+If a required variable is missing, stop and ask the operator to set it. Do not invent a URL or group id.
 
 ```http
 X-API-Key: ${TWITTER_COLLECTOR_API_KEY}
@@ -40,21 +45,21 @@ Optional helper: [`scripts/request.sh`](scripts/request.sh)
 
 ## Local category list
 
-- Keep any **category / taxonomy / labeling checklist** in the **agent’s local workspace** (files you own), not by reshaping other people’s watchlist groups.
-- Use the remote API group only as the **account watch set** for collection/query. Map categories locally (e.g. handle → category) in your own notes or config.
+- Keep any **category / taxonomy / labeling checklist** in the **agent’s local workspace** (files you own), not by reshaping watchlist groups on the server.
+- Use the remote API group only as the **account watch set** for query. Map categories locally (e.g. handle → category).
 
 ## Hard rules (must follow)
 
-1. **Create and use your own watchlist group.** Prefer a distinctive name (include agent or project name). Persist the group `id` locally (env or workspace file). Reuse it on later runs; do not keep creating duplicates without checking first.
-2. **Never modify other groups.** Do not rename, disable, delete, or change membership of groups you did not create. Treat `TWITTER_COLLECTOR_PROTECTED_GROUP_IDS` and any shared/public/common groups as immutable. Listing other groups for awareness is OK; mutating them is not.
-3. **Allowed remote actions only:**
-   - create your own group (if missing)
-   - add/update/remove accounts **in your own group**
-   - fetch tweets (prefer `group_id=<your group>`)
-   - optional: `GET /api/auth/api-key/me` to verify credentials
-4. **Forbidden:** workflows, reports, user-feed summaries, graphs, collect/jobs triggers, admin APIs, or any “run task / execute pipeline” style endpoints.
-5. Do not log, commit, or echo the full API key.
-6. Keep tweet responses small (`page_size` ≤ 20 unless the user asks for more; max 100).
+1. **Use only `TWITTER_COLLECTOR_AGENT_GROUP_ID`.** Do not create a new group via API. Do not pick another existing group as “yours.”
+2. **Never modify other groups** (or any group via write APIs from this skill). Treat all non-agent groups and `TWITTER_COLLECTOR_PROTECTED_GROUP_IDS` as immutable. Listing groups for awareness is OK; mutating is not.
+3. **Do not call watchlist write endpoints** (`POST`/`PATCH`/`DELETE` under `/api/watchlist/...`). If membership must change, ask the operator to edit the agent group in the console.
+4. **Allowed remote actions only:**
+   - `GET /api/auth/api-key/me`
+   - list/read groups and members (read-only)
+   - `GET /api/tweets` with `group_id=<TWITTER_COLLECTOR_AGENT_GROUP_ID>`
+5. **Forbidden:** workflows, reports, user-feed summaries, graphs, collect/jobs triggers, admin APIs, or any “run task / execute pipeline” endpoint.
+6. Do not log, commit, or echo the full API key.
+7. Keep tweet responses small (`page_size` ≤ 20 unless the user asks for more; max 100).
 
 ## Allowed operations
 
@@ -64,36 +69,29 @@ Detail: [reference.md](reference.md).
 
 - `GET /api/auth/api-key/me`
 
-### Own watchlist group
+### Watchlist (read)
 
-- `GET /api/watchlist/groups` — find whether your group already exists
-- `POST /api/watchlist/groups` — body `{"name":"<your distinctive name>"}` when missing
-- `GET /api/watchlist/groups/{group_id}/members` — only for **your** group id
-- `GET /api/watchlist/groups-with-members` — read-only overview; mutate only your group afterward
-
-### Edit your own watch list
-
-- `POST /api/watchlist/targets` — include `group_ids: [<your_group_id>]`
-- `PATCH /api/watchlist/targets/{target_id}` — only targets that belong to your group
-- `POST /api/watchlist/groups/{group_id}/members` — only your group
-- `DELETE` member removal on your group only (see reference)
-- `POST /api/watchlist/targets/bulk-import` — only with `group_id` set to **your** group
+- `GET /api/watchlist/groups`
+- `GET /api/watchlist/groups-with-members`
+- `GET /api/watchlist/groups/{group_id}/members` — prefer your agent group id
+- `GET /api/watchlist/targets`
 
 ### Tweets
 
-- `GET /api/tweets` — filter with `group_id=<your_group_id>` whenever possible
+- `GET /api/tweets` — filter with `group_id=$TWITTER_COLLECTOR_AGENT_GROUP_ID`
 
 ## Suggested workflow
 
-1. Confirm env vars.
+1. Confirm env vars, including `TWITTER_COLLECTOR_AGENT_GROUP_ID`.
 2. Verify credentials with `GET /api/auth/api-key/me`.
-3. Resolve your group: use `TWITTER_COLLECTOR_AGENT_GROUP_ID` if set; else list groups, match your name, or create one and save the id locally.
-4. Maintain category taxonomy **locally**; sync account handles into **your** group only.
-5. Query tweets for your `group_id`. Treat engagement fields as possibly stale.
-6. Never touch other groups; never call workflow/report/job endpoints.
+3. Optionally `GET /api/watchlist/groups/{id}/members` for the agent group.
+4. Maintain category taxonomy **locally**.
+5. Query tweets for the agent `group_id`. Treat engagement fields as possibly stale.
+6. If the user wants accounts added/removed, tell them the operator must update that group in the console (API key cannot write).
 
 ## Out of scope
 
+- Creating or editing watchlist groups/members via API
 - Other groups’ membership or metadata
 - Workflows, reports, graphs, feeds, collect jobs, admin
 - Hardcoding real deployment URLs or secrets in this repo

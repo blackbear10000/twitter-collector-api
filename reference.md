@@ -2,16 +2,17 @@
 
 All paths are relative to `TWITTER_COLLECTOR_URL`. Send header `X-API-Key: $TWITTER_COLLECTOR_API_KEY`.
 
-This reference lists **only** endpoints this skill expects agents to use: own group, own watch list, tweets.
+This reference lists **only** endpoints this skill expects agents to use (read path).
+
+**Auth note:** With a typical API key, **GET** watchlist/tweet routes work. **POST/PATCH/DELETE** watchlist routes return `401 missing bearer token` on the current deployment. Group creation and membership edits are done by the operator in the console; agents receive `TWITTER_COLLECTOR_AGENT_GROUP_ID`.
 
 ## Errors
 
 | HTTP | Typical cause |
 |------|----------------|
-| 401 | Missing/invalid credentials |
+| 401 | Missing/invalid credentials, or write route requiring JWT |
 | 403 | Missing scope / not allowed |
 | 404 | Resource missing for this tenant |
-| 409 | Conflict (e.g. duplicate group name) |
 | 4xx/5xx | See JSON `detail` |
 
 ## Identity
@@ -20,80 +21,23 @@ This reference lists **only** endpoints this skill expects agents to use: own gr
 
 Connectivity / identity check.
 
-## Watchlist groups
+## Watchlist (read)
 
 ### `GET /api/watchlist/groups`
 
-List groups. Use to find your agent-owned group by name before creating another.
-
-### `POST /api/watchlist/groups`
-
-```json
-{ "name": "agent-<your-unique-name>" }
-```
-
-Create **your** group only. Use a distinctive name. Persist the returned `id`.
-
-### `GET /api/watchlist/groups/{group_id}/members`
-
-List members. Call only for **your** group id.
+List groups (awareness only). Do not mutate any of them.
 
 ### `GET /api/watchlist/groups-with-members`
 
-Read-only overview. Do not use discovered foreign group ids as mutation targets.
+Read-only overview.
 
-### `POST /api/watchlist/groups/{group_id}/members`
+### `GET /api/watchlist/groups/{group_id}/members`
 
-```json
-{ "target_ids": [1, 2] }
-```
-
-Only for **your** `group_id`.
-
-### `DELETE /api/watchlist/groups/{group_id}/members`
-
-```json
-{ "target_ids": [1, 2] }
-```
-
-Only for **your** `group_id`. (Send JSON body with `Content-Type: application/json`.)
-
-Do **not** `PATCH`/`DELETE` the group resource for any group you do not own. Do not disable or rename other groups.
-
-## Targets (accounts)
-
-### `POST /api/watchlist/targets`
-
-```json
-{
-  "twitter_handle": "example",
-  "notes": null,
-  "disabled": false,
-  "group_ids": [<your_group_id>],
-  "manual_score_boost": 0
-}
-```
-
-Always attach **your** group id. Do not pass other groups’ ids.
-
-### `PATCH /api/watchlist/targets/{target_id}`
-
-Update handle/notes/disabled/`group_ids` only for targets in **your** group. Never reassign targets into/out of other groups.
-
-### `POST /api/watchlist/targets/bulk-import`
-
-```json
-{
-  "handles": ["alice", "bob"],
-  "group_id": <your_group_id>
-}
-```
-
-`group_id` must be **yours**.
+Prefer `group_id=$TWITTER_COLLECTOR_AGENT_GROUP_ID`.
 
 ### `GET /api/watchlist/targets`
 
-Optional read of targets. Prefer group members endpoints when working from your group.
+Optional read of targets.
 
 ## Tweets
 
@@ -105,7 +49,7 @@ Optional read of targets. Prefer group members endpoints when working from your 
 | `page_size` | Default `20`, max `100`; keep small |
 | `q` | Text search |
 | `tweet_type` | Optional type filter |
-| `group_id` | Prefer **your** group id |
+| `group_id` | Use **`$TWITTER_COLLECTOR_AGENT_GROUP_ID`** |
 | `ungrouped_only` | Avoid unless explicitly needed |
 | `target_id` | Optional single target |
 | `start_time` / `end_time` | Window as accepted by the API |
@@ -139,10 +83,11 @@ Example item fields (extras may appear; treat unknown fields as opaque):
 
 ## Explicitly out of scope (do not call)
 
+- Any `POST` / `PATCH` / `DELETE` under `/api/watchlist/**`
 - `/api/workflows/**`
 - `/api/reports/**`
 - `/api/user-feed/**`
 - `/api/jobs/**`
 - `/api/admin/**`
-- `/api/graph/**` (standalone)
+- `/api/graph/**`
 - Any endpoint that “runs”, “generates”, or schedules tasks
